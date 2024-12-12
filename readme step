@@ -1,0 +1,2 @@
+# Install Pandas Library 
+           pip install pandas openpyxl
