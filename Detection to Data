@@ -1,0 +1,103 @@
+import cv2
+from ultralytics import YOLO
+import pandas as pd
+import time
+
+def save_to_excel(data):
+    """Save person count data to an Excel file."""
+    df = pd.DataFrame(data)  # Convert data to Pandas DataFrame
+    excel_filename = 'person_count_data.xlsx'  # Output Excel file name
+    df.to_excel(excel_filename, index=False)  # Save DataFrame to Excel
+    print(f"Data saved to {excel_filename}")
+
+def automatic_camera_loop():
+    # Load the YOLOv8 model
+    model = YOLO('yolov8n.pt')  # Lightweight YOLO model
+
+    # Open the camera
+    cap = cv2.VideoCapture(0)  # Change to 1 for external camera
+    if not cap.isOpened():
+        print("Cannot open camera")
+        return
+
+    # Set the desired frame size
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+    # Initialize storage for person count data
+    person_count_data = []
+
+    while True:
+        # **Phase 1: Person Detection for 2 minutes**
+        print("Phase 1: Person detection started.")
+        detection_start_time = time.time()
+        while time.time() - detection_start_time < 120:  # 120 seconds
+            ret, frame = cap.read()
+            if not ret:
+                print("Failed to grab frame")
+                break
+
+            # Perform human detection
+            results = model(frame)
+            person_count = 0
+
+            # Process detection results
+            for result in results[0].boxes.data:
+                class_id = int(result[5])  # Class ID
+                if class_id == 0:  # 'person' class
+                    person_count += 1
+                    x1, y1, x2, y2 = map(int, result[:4])  # Bounding box
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            # Add the person count and timestamp to the data
+            timestamp = time.strftime('%Y-%m-%d %H:%M:%S')  # Get current time
+            person_count_data.append({"Timestamp": timestamp, "Person Count": person_count})
+
+            # Display the person count on the frame
+            cv2.putText(frame, f"People Count: {person_count}", (10, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+
+            # Show the frame
+            cv2.imshow("Phase 1: Human Detection", frame)
+
+            # Exit on 'q'
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                cap.release()
+                cv2.destroyAllWindows()
+                save_to_excel(person_count_data)  # Save data to Excel
+                return
+
+        print("Phase 1 completed. Saving data...")
+
+        # Save person count data after each phase
+        save_to_excel(person_count_data)
+
+        # **Phase 2: Monitoring for 2 minutes (No Detection)**
+        print("Phase 2: Monitoring started (no detection).")
+        monitoring_start_time = time.time()
+        while time.time() - monitoring_start_time < 120:  # 120 seconds
+            ret, frame = cap.read()
+            if not ret:
+                print("Failed to grab frame")
+                break
+
+            # Display raw camera feed
+            cv2.putText(frame, "Phase 2: Monitoring (No Detection)", (10, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+            cv2.imshow("Phase 2: Monitoring", frame)
+
+            # Exit on 'q'
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                cap.release()
+                cv2.destroyAllWindows()
+                save_to_excel(person_count_data)  # Save data to Excel
+                return
+
+        print("Phase 2 completed. Restarting loop.")
+
+    # Release resources
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    automatic_camera_loop()
